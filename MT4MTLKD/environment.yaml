@@ -1,9 +1,10 @@
-name: MT4MTLKD
+name: TERL
 channels:
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free
   - nwoye
   - pytorch
   - conda-forge
+  #- anaconda
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/msys2/
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge
@@ -171,5 +172,5 @@ dependencies:
     - yacs==0.1.8
     - yapf==0.32.0
     - zipp==3.8.1
-prefix: /home/shuangchun/anaconda3/envs/MT4MTLKD
+# prefix: /home/shuangchun/anaconda3/envs/MT4MTLKD
 

@@ -40,7 +40,7 @@ parser.add_argument('-e', '--test', action='store_true', help='to test')
 parser.add_argument('--val_interval', type=int, default=1,
                     help='(for hp tuning). Epoch interval to evaluate on validation data. set -1 for only after final epoch, or a number higher than the total epochs to not validate.')
 # data
-parser.add_argument('--data_dir', type=str, default='/public/home/guisc/Data/Video/Surgical/CholecT45',
+parser.add_argument('--data_dir', type=str, default='/home/zyy/Downloads/dataset/CholecT45/',
                     help='path to dataset?')
 # parser.add_argument('--data_dir', type=str, default='/SDIM/shuangchun/Data/Video/Surgical/CholecT45/CholecT45',
 #                     help='path to dataset?')

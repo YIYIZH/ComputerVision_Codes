@@ -147,7 +147,7 @@ def build_q2l(args):
     # )
     model = moco.MoCo(args, 101, args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
 
-    model.input_proj = nn.Identity()
+    model.input_proj = nn.Identity() #占位, output=input
     print("set model.input_proj to Indentify!")
 
     return model

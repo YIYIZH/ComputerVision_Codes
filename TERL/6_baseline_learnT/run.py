@@ -21,6 +21,8 @@ import models
 from utils.misc import clean_state_dict
 from imbsam import SAM, ImbSAM, SGD
 
+os.chdir("/home/zyy/PycharmProjects/ComputerVision_Codes/TERL/6_baseline_learnT/")
+print(os.getcwd())
 np.seterr(invalid='ignore')
 # %% @args parsing
 # %% @args parsing
@@ -38,7 +40,7 @@ parser.add_argument('--ht', action='store_true', help='to test')
 parser.add_argument('--val_interval', type=int, default=1,
                     help='(for hp tuning). Epoch interval to evaluate on validation data. set -1 for only after final epoch, or a number higher than the total epochs to not validate.')
 # data
-parser.add_argument('--data_dir', type=str, default='/public/home/guisc/Data/Video/Surgical/CholecT45',
+parser.add_argument('--data_dir', type=str, default='/home/zyy/Downloads/dataset/CholecT45/',
                     help='path to dataset?')
 parser.add_argument('--rho', type=float, default=0.05)
 parser.add_argument('--w_con', type=float, default=1.0)
@@ -113,7 +115,7 @@ parser.add_argument('--cos', default='True',
 
 parser.add_argument('--fc', action='store_true', help='to test')
 # device
-parser.add_argument('--gpu', type=str, default="0,1,2",
+parser.add_argument('--gpu', type=str, default="0，1",
                     help='The gpu device to use. To use multiple gpu put all the device ids comma-separated, e.g: "0,1,2" ')
 FLAGS, unparsed = parser.parse_known_args()
 FLAGS.local_rank = -1
@@ -198,9 +200,11 @@ ins_ivt_num = torch.tensor(sorted(list(np.array([ins_ivt, ins_num1[6 + 10 + 15:]
               1].cuda()
 FLAGS.ins_ivt_num = np.array(sorted(list(np.array([ins_ivt, ins_num1[6 + 10 + 15:]]).T), key=(lambda x: x[0])))[:,
                     1]
-tail_classes_i = ins_ivt[-4:]
-tail_classes_v = ins_ivt[-8:]
-tail_classes_t = ins_ivt[-6:]
+
+# tail_classes_i = ins_ivt[-4:]
+# tail_classes_v = ins_ivt[-8:]
+# tail_classes_t = ins_ivt[-6:]
+
 if len(FLAGS.tail_classes_ivt) == 0:
     FLAGS.true_tail_classes_ivt = ins_ivt[-1 * (FLAGS.tail_num):]
 else:
@@ -239,17 +243,17 @@ def train_loop(dataloader, model, activation, loss_fn_ivt, optimizers, scheduler
             break
         img1, img2, y1, y1_s, y2, y2_s, y3, y3_s, y4, y4_s = img[0].cuda(), img[1].cuda(), y1[0].cuda(), y1[1].cuda(), \
                                                              y2[0].cuda(), y2[1].cuda(), y3[0].cuda(), y3[1].cuda(), y4[
-                                                                 0].cuda(), y4[1].cuda()
+                                                                 0].cuda(), y4[1].cuda() # (tool_label, i_id), (verb_label, v_id), (target_label, t_id), (triplet_label, ivt_id)
         model.train()
-        label_dict = {100: y4, 6: y1, 10: y2, 15: y3}
-        tail_ivt_labels = y4 * FLAGS.tail_mask.unsqueeze(0).repeat_interleave(y4.shape[0], dim=0)
-        tail_i_labels = torch.zeros_like(tail_ivt_labels)[:, :6]
+        label_dict = {100: y4, 6: y1, 10: y2, 15: y3} # ivt, i, v, t
+        tail_ivt_labels = y4 * FLAGS.tail_mask.unsqueeze(0).repeat_interleave(y4.shape[0], dim=0) # [bs,100]
+        tail_i_labels = torch.zeros_like(tail_ivt_labels)[:, :6] # [bs, 6]
         tail_v_labels = torch.zeros_like(tail_ivt_labels)[:, :10]
         tail_t_labels = torch.zeros_like(tail_ivt_labels)[:, :15]
-        idx = torch.where(tail_ivt_labels == 1)
-        if len(idx[0]) == 0:
+        idx = torch.where(tail_ivt_labels == 1) # return idx[0]=[bs_id], idx[1]=[tail ivt label]
+        if len(idx[0]) == 0: # if there are no triplet tail labels in all batches, escape it
             continue
-        tail_i_labels[(idx[0], model.bank[idx[-1], 1])] = 1
+        tail_i_labels[(idx[0], model.bank[idx[-1], 1])] = 1 # label of i as the component i in the tail ivt
         tail_v_labels[(idx[0], model.bank[idx[-1], 2])] = 1
         tail_t_labels[(idx[0], model.bank[idx[-1], 3])] = 1
         total_step = (epoch) * len(dataloader) + batch + 1
@@ -278,7 +282,7 @@ def train_loop(dataloader, model, activation, loss_fn_ivt, optimizers, scheduler
         loss_cls1 = loss_i1 + loss_v1 + loss_t1
 
         # ivt --> i, v, t
-
+        # compute component loss from logit_ivt
         logit_comps = []
         for i in range(3):
             comp_logits = []
@@ -286,14 +290,14 @@ def train_loop(dataloader, model, activation, loss_fn_ivt, optimizers, scheduler
                 idxes = np.where(mAP.bank[:, i + 1] == c)[0]
                 comp_logits.append(torch.max(logit_ivt[:, idxes], dim=-1).values)
             logit_comps.append(torch.stack(comp_logits).permute(1, 0))
-
+        
         loss_i = criterion(logit_comps[0], y1).mean()
         loss_v = criterion(logit_comps[1], y2).mean()
         loss_t = criterion(logit_comps[2], y3).mean()
         loss_ivt = criterion(logit_ivt, y4).mean()
         loss_cls_ivt = loss_i + loss_v + loss_t + loss_ivt
 
-        if not FLAGS.mlp:
+        if not FLAGS.mlp: # baseline
             loss = loss_cls1 + loss_cls_ivt
             info_loss = {
                 'loss_i': loss_i.item(),
@@ -308,11 +312,11 @@ def train_loop(dataloader, model, activation, loss_fn_ivt, optimizers, scheduler
                 'loss': loss.item()
             }
         else:
-            if epoch < FLAGS.w_epoch:
+            if epoch < FLAGS.w_epoch: # epoch = 0
                 loss_con = criterion_con(logits[0], logits[1], queue_labels[0])
                 loss = loss_con * FLAGS.w_con + loss_cls1
                 print(
-                    'total:{:2f}---con:{:2f}---proto:{:2f}'.format(loss.item(), loss_con.item(),
+                    'total loss:{:2f}---loss_con:{:2f}---loss_cls1:{:2f}'.format(loss.item(), loss_con.item(),
                                                                    loss_cls1.item()))
                 info_loss = {
                     'loss_i': loss_i.item(),
@@ -330,7 +334,7 @@ def train_loop(dataloader, model, activation, loss_fn_ivt, optimizers, scheduler
             else:
                 loss_cls = loss_cls_ivt + loss_cls1
 
-                loss_con = criterion_con(logits[0], logits[1], queue_labels[0])
+                loss_con = criterion_con(logits[0], logits[1], queue_labels[0]) # moco contranstive loss
 
                 loss_i1_proto = criterion(logits_proto[0][0],
                                           F.one_hot(logits_proto[-1][0].squeeze(-1), num_classes=6)).mean()
@@ -345,7 +349,7 @@ def train_loop(dataloader, model, activation, loss_fn_ivt, optimizers, scheduler
 
                 loss = loss_cls + loss_con * FLAGS.w_con + loss_con_proto1 * FLAGS.w_proto + loss_tail_ivt * FLAGS.w_tail
                 print(
-                    'total:{:2f}---con:{:2f}---proto1:{:2f}---tail:{:2f}'.format(loss.item(), loss_con.item(),
+                    'total:{:2f}---loss_con:{:2f}---proto1:{:2f}---tail_ivt:{:2f}'.format(loss.item(), loss_con.item(),
                                                                                  loss_con_proto1.item(),
                                                                                  loss_tail_ivt.item()))
                 info_loss = {
@@ -513,7 +517,7 @@ model = network.build_q2l(FLAGS)
 model = model.cuda()
 
 pytorch_total_params = sum(p.numel() for p in model.parameters())
-pytorch_train_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+pytorch_train_params = sum(p.numel() for p in model.parameters() if p.requires_grad) # only the top half model requires grad
 print('BackBone: Total params: %.2fM' % (sum(p.numel() for p in model.parameters()) / 1000000.0))
 # %% performance tracker for hp tuning
 benchmark = torch.nn.Parameter(torch.tensor([0.0]), requires_grad=False)
@@ -594,7 +598,7 @@ for video_dataset in test_dataset:
                                  num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
     test_dataloaders.append(test_dataloader)
 test_train_dataloaders = []
-for video_dataset in test_train_dataset:
+for video_dataset in test_train_dataset: # include last 9 videos in train dataset 
     test_train_dataloader = DataLoader(video_dataset, batch_size=batch_size, shuffle=False,
                                        prefetch_factor=3 * batch_size,
                                        num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
@@ -808,7 +812,7 @@ if is_test:
         mAPt.reset_global()
         allstep = 0
 
-        print('========testdata==============', file=open(logfile, 'a+'))
+        print('========Testdata==============', file=open(logfile, 'a+'))
         for test_dataloader in test_dataloaders:
             test_loop(test_dataloader, model, activation, writer, final_eval=True, mode='test')
 
@@ -871,7 +875,7 @@ if is_test:
             file=open(logfile, 'a+'))
         print('=' * 50, file=open(logfile, 'a+'))
 
-        print('========testdata==============', file=open(logfile, 'a+'))
+        print('========VALdata==============', file=open(logfile, 'a+'))
         mAP.reset_global()
         mAPi.reset_global()
         mAPv.reset_global()
@@ -939,7 +943,7 @@ if is_test:
             file=open(logfile, 'a+'))
         print('=' * 50, file=open(logfile, 'a+'))
 
-        print('========traindata==============', file=open(logfile, 'a+'))
+        print('========TestTraindata==============', file=open(logfile, 'a+'))
         mAP.reset_global()
         mAPi.reset_global()
         mAPv.reset_global()

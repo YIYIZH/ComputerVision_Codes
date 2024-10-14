@@ -105,9 +105,8 @@ class MoCo(nn.Module):
         # create the encoders
         # num_classes is the output fc dimension
         self.encoder_q = build_backbone(args)
-        self.register_buffer("bank", torch.tensor(self.args.bank))
+        self.register_buffer("bank", torch.tensor(self.args.bank)) # bank 100 [ivt,i,v,t,iv,it]
         if self.args.ht:
-
             self.cam_i_head = nn.Conv2d(self.encoder_q.num_channels, 6, kernel_size=1)
             self.cam_i_tail = nn.Conv2d(self.encoder_q.num_channels, 6, kernel_size=1)
             self.cam_v_head = nn.Conv2d(self.encoder_q.num_channels, 10, kernel_size=1)
@@ -129,7 +128,7 @@ class MoCo(nn.Module):
 
         if mlp:  # hack: brute-force replacement
             self.encoder_k = build_backbone(args)
-
+            # encoder_k require grad is false
             self.EMA(self.encoder_q, self.encoder_k)
             self.cam_disen_k = nn.Conv2d(self.encoder_q.num_channels + 1, self.encoder_q.num_channels, kernel_size=1)
             self.EMA(self.cam_disen, self.cam_disen_k)
@@ -137,14 +136,14 @@ class MoCo(nn.Module):
             # create the queue
             self.register_buffer("queue", torch.randn(dim, K))
 
-            self.register_buffer("i_prototpye", torch.rand(6, self.args.moco_dim))
+            self.register_buffer("i_prototpye", torch.rand(6, self.args.moco_dim)) # randomly initialized prototype (6, 768)
             self.register_buffer("v_prototpye", torch.rand(10, self.args.moco_dim))
             self.register_buffer("t_prototpye", torch.rand(15, self.args.moco_dim))
-            self.queue = nn.functional.normalize(self.queue, dim=0)
-            self.register_buffer("queue_l", torch.zeros(1, K).long())
-            self.register_buffer("queue_l_i", torch.zeros(1, K).long())
-            self.register_buffer("queue_l_v", torch.zeros(1, K).long())
-            self.register_buffer("queue_l_t", torch.zeros(1, K).long())
+            self.queue = nn.functional.normalize(self.queue, dim=0) # [768, 16384]
+            self.register_buffer("queue_l", torch.zeros(1, K).long()) # [1, 16384]
+            self.register_buffer("queue_l_i", torch.zeros(1, K).long()) # K = args.moco_k = 16384 [1, 16384]
+            self.register_buffer("queue_l_v", torch.zeros(1, K).long()) # [1, 16384]
+            self.register_buffer("queue_l_t", torch.zeros(1, K).long()) # [1, 16384]
             # self.register_buffer("queue_t", torch.zeros(self.args.moco_class, K).long())
             self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
 
@@ -160,7 +159,7 @@ class MoCo(nn.Module):
         """
 
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
-            param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
+            param_k.data = param_k.data * self.m + param_q.data * (1. - self.m) # m = 0.999 , param_k will be different from q because float computation
         # for param_q, param_k in zip(self.dec_q_tail_i.parameters(), self.dec_k_tail_i.parameters()):
         #     param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)
         # for param_q, param_k in zip(self.dec_q_tail_v.parameters(), self.dec_k_tail_v.parameters()):
@@ -282,14 +281,14 @@ class MoCo(nn.Module):
         return cam_i, y_i
 
     def valid_q(self, cam, labels, encoder, src):
-        idxes_ivt = torch.where(labels[0] == 1)
-        idxes_i = (idxes_ivt[0], self.bank[idxes_ivt[-1], 1])
-        mlp_feats = torch.stack([
-            encoder(torch.concatenate([src[0], cam[:, i, :, :].unsqueeze(1)], dim=1)) for i in
-            range(cam.shape[1])]).permute(1, 0, 2, 3, 4)[idxes_i]
+        idxes_ivt = torch.where(labels[0] == 1) # triplet class idx
+        idxes_i = (idxes_ivt[0], self.bank[idxes_ivt[-1], 1]) # instrument component label index
+        mlp_feats = torch.stack([ 
+            encoder(torch.cat([src[0], cam[:, i, :, :].unsqueeze(1)], dim=1)) for i in
+            range(cam.shape[1])]).permute(1, 0, 2, 3, 4)[idxes_i] # use instru index to select cam feature layer?
 
         lab_ivt = idxes_ivt[-1]
-        return mlp_feats, lab_ivt
+        return mlp_feats, lab_ivt # [1,768,7,7], triplet tail index
 
     def valid_q_ori(self, cam, labels, encoder, src):
         w_cam = cam.view(cam.shape[0], cam.shape[1], -1)
@@ -334,21 +333,21 @@ class MoCo(nn.Module):
                                    [self.args.head_mask, self.args.tail_mask])
         else:
             cam_i = self.cam_i(src[0])
-            y_i = self.pool(cam_i).view(cam_i.shape[0], -1)
+            y_i = self.pool(cam_i).view(cam_i.shape[0], -1) # predict tool label [bs,6]
             cam_v = self.cam_v(src[0])
-            y_v = self.pool(cam_v).view(cam_v.shape[0], -1)
+            y_v = self.pool(cam_v).view(cam_v.shape[0], -1) # predict verb label [bs,10]
             cam_t = self.cam_t(src[0])
-            y_t = self.pool(cam_t).view(cam_t.shape[0], -1)
+            y_t = self.pool(cam_t).view(cam_t.shape[0], -1) # predict target label [bs,15]
             cam = self.cam_ivt(src[0])
-            y = self.pool(cam).view(cam.shape[0], -1)
+            y = self.pool(cam).view(cam.shape[0], -1) # predict ivt [bs, 100]
 
-        feat = self.pool(src[0]).squeeze(2).squeeze(2)
+        feat = self.pool(src[0]).squeeze(2).squeeze(2) # feature embedding of query image [bs, 768]
 
-        if im_k != None:
+        if im_k != None: # update prototype of i v t from samples in the queue with the groundtruth labels
             self.i_prototpye = torch.vstack(
                 [self.queue[:, torch.where(self.queue_l_i == i)[1]].mean(axis=1) if len(
                     torch.where(self.queue_l_i == i)[1]) > 0 else self.i_prototpye[i, :] for i in
-                 range(6)])
+                 range(6)])  # [6, 768]
             self.v_prototpye = torch.vstack(
                 [self.queue[:, torch.where(self.queue_l_v == i)[1]].mean(axis=1) if len(
                     torch.where(self.queue_l_v == i)[1]) > 0 else self.v_prototpye[i, :] for i in
@@ -358,9 +357,9 @@ class MoCo(nn.Module):
                     torch.where(self.queue_l_t == i)[1]) > 0 else self.t_prototpye[i, :] for i in
                  range(15)])
             mlp_feats, lab_ivt = self.valid_q(cam, labels, self.cam_disen, src)
-            y_tail = self.pool(self.cam_ivt(mlp_feats)).view(mlp_feats.shape[0], -1)
-            mlp_feats = self.pool(mlp_feats).squeeze(2).squeeze(2)
-            q = nn.functional.normalize(mlp_feats, dim=-1)
+            y_tail = self.pool(self.cam_ivt(mlp_feats)).view(mlp_feats.shape[0], -1) #[1, 100]
+            mlp_feats = self.pool(mlp_feats).squeeze(2).squeeze(2) # [1,768]
+            q = nn.functional.normalize(mlp_feats, dim=-1) #normalize tail feature
             with torch.no_grad():  # no gradient to keys
                 self._momentum_update_key_encoder()  # update the key encoder
 
@@ -368,17 +367,17 @@ class MoCo(nn.Module):
                 im_k, idx_unshuffle = self._batch_shuffle_ddp(im_k)
 
                 mlp_feat_k, src_k, pos_k = self.encoder_k(im_k)
-                cam_k = self.cam_ivt(src[0])
+                cam_k = self.cam_ivt(src[0]) # should be src_k[0]?
                 # cam_k, _ = self.headtail(src_k, [self.cam_ivt_head, self.cam_ivt_tail],
                 #                          [self.args.head_mask, self.args.tail_mask])
                 cam_k = self._batch_unshuffle_ddp(cam_k, idx_unshuffle)
                 mlp_feats_k, lab_ivt_k = self.valid_q(cam_k, labels, self.cam_disen_k, src_k)
                 mlp_feats_k = self.pool(mlp_feats_k).squeeze(2).squeeze(2)
 
-                k = nn.functional.normalize(mlp_feats_k, dim=-1)
+                k = nn.functional.normalize(mlp_feats_k, dim=-1) # normalize key features
 
             # compute logits
-            l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1)
+            l_pos = torch.einsum('nc,nc->n', [q, k]).unsqueeze(-1) # positive samples
             l_neg = torch.einsum('nc,cm->nm', [q, self.queue.clone().detach()])
             logits = torch.cat([l_pos, l_neg], dim=-1)
 

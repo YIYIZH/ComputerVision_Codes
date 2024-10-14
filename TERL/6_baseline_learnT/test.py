@@ -40,7 +40,7 @@ parser.add_argument('--latest', action='store_true', help='to test')
 parser.add_argument('--val_interval', type=int, default=1,
                     help='(for hp tuning). Epoch interval to evaluate on validation data. set -1 for only after final epoch, or a number higher than the total epochs to not validate.')
 # data
-parser.add_argument('--data_dir', type=str, default='/public/home/guisc/Data/Video/Surgical/CholecT45',
+parser.add_argument('--data_dir', type=str, default='/home/zyy/Downloads/dataset/CholecT45/',
                     help='path to dataset?')
 parser.add_argument('--rho', type=float, default=0.05)
 parser.add_argument('--dataset_variant', type=str, default='cholect45-crossval',
@@ -417,25 +417,25 @@ train_dataset, val_dataset, test_dataset, test_train_dataset = dataset.build()
 
 # train and val data loaders
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, prefetch_factor=3 * batch_size,
-                              num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
+                              num_workers=8, pin_memory=True, persistent_workers=True, drop_last=False)
 
 val_dataloaders = []
 for video_dataset in val_dataset:
     test_dataloader = DataLoader(video_dataset, batch_size=batch_size, shuffle=False, prefetch_factor=3 * batch_size,
-                                 num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
+                                 num_workers=8, pin_memory=True, persistent_workers=True, drop_last=False)
     val_dataloaders.append(test_dataloader)
 
 # test data set is built per video, so load differently
 test_dataloaders = []
 for video_dataset in test_dataset:
     test_dataloader = DataLoader(video_dataset, batch_size=batch_size, shuffle=False, prefetch_factor=3 * batch_size,
-                                 num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
+                                 num_workers=8, pin_memory=True, persistent_workers=True, drop_last=False)
     test_dataloaders.append(test_dataloader)
 test_train_dataloaders = []
 for video_dataset in test_train_dataset:
     test_train_dataloader = DataLoader(video_dataset, batch_size=batch_size, shuffle=False,
                                        prefetch_factor=3 * batch_size,
-                                       num_workers=3, pin_memory=True, persistent_workers=True, drop_last=False)
+                                       num_workers=8, pin_memory=True, persistent_workers=True, drop_last=False)
     test_train_dataloaders.append(test_train_dataloader)
 print("Dataset loaded ...")
 

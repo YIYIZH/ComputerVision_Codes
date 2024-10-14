@@ -153,7 +153,8 @@ class CholecT50():
     def transform(self):
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         op_test = [transforms.Resize((self.FLAG.img_size, self.FLAG.img_size)),
-                   transforms.Resize((self.FLAG.img_size, self.FLAG.img_size)), transforms.ToTensor(), normalize, ]
+                   #transforms.Resize((self.FLAG.img_size, self.FLAG.img_size)), 
+                   transforms.ToTensor(), normalize, ]
         op_train = [transforms.Resize((self.FLAG.img_size, self.FLAG.img_size))] + self.augmentation_list + [
             transforms.Resize((self.FLAG.img_size, self.FLAG.img_size)),
             transforms.ToTensor(), normalize, ]
@@ -234,32 +235,32 @@ class T50(Dataset):
         basename = "{}.png".format(str(self.triplet_labels[index, 0]).zfill(6))
         triplet_label = self.triplet_labels[index, 1:]
         ivt_id = 100
-        if triplet_label.max() == 1:
+        if triplet_label.max() == 1: # there are triplet labels in a single image
             c_id = np.array(np.where(triplet_label == 1)[0])
             # ivt_id[:len(c_id)] = c_id
-            ins_num = self.args.ins_ivt_num[c_id]
-            ivt_id = c_id[np.where(ins_num == ins_num.min())[0][0]]
+            ins_num = self.args.ins_ivt_num[c_id] # number of instances of the triplet c_id in all images
+            ivt_id = c_id[np.where(ins_num == ins_num.min())[0][0]] # select the triplet with less instances
             # if ivt_id in [17, 60, 19]:
             #     ivt_id = -1
 
-        if triplet_label.max() == 0:
-            i_id = 6
-            v_id = 9
-            t_id = 14
+        if triplet_label.max() == 0: # there are no triplet in the image
+            i_id = 6 # null
+            v_id = 9 # null
+            t_id = 14 # null
         else:
-            i_id = self.args.bank[ivt_id, 1]
-            v_id = self.args.bank[ivt_id, 2]
-            t_id = self.args.bank[ivt_id, 3]
+            i_id = self.args.bank[ivt_id, 1] # bank is a mapping of ivt,i,v,t,iv,it, extract the class id of i from ivt index (triplet with less instances)
+            v_id = self.args.bank[ivt_id, 2] # extract the class id of component v
+            t_id = self.args.bank[ivt_id, 3] # extract the class id of component t
         # print(ins_num)
-        tool_label = self.tool_labels[index, 1:]
-        verb_label = self.verb_labels[index, 1:]
-        target_label = self.target_labels[index, 1:]
+        tool_label = self.tool_labels[index, 1:] # extract tool presence label from text
+        verb_label = self.verb_labels[index, 1:] # extract verb presence label from text
+        target_label = self.target_labels[index, 1:] # extract target presence label from text
         img_path = os.path.join(self.img_dir, basename)
         image = Image.open(img_path)
         if self.transform:
             if isinstance(self.transform, list):
                 image1 = self.transform[0](image)
-                image2 = self.transform[1](image)
+                image2 = self.transform[1](image) # image1=imag2
                 return [image1, image2], (
                     (tool_label, i_id), (verb_label, v_id), (target_label, t_id), (triplet_label, ivt_id)), img_path
             else:
